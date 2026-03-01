@@ -8,9 +8,12 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](https://opensource.org/licenses/MIT)
 [![Status: Live Demo](https://img.shields.io/badge/Status-Live_Demo-brightgreen)](https://github.com/AnandSundar/BountyOps)
 
-![BountyOps Dashboard](./public/screenshots/dashboard.png)
+BountyOps Dashboard
 
-[📺 View Live Demo](#) • [📖 Read the Docs](#)
+<img width="1615" height="917" alt="image" src="https://github.com/user-attachments/assets/50939e7b-6e09-4977-a349-2f51b73a39eb" />
+
+
+[📖 Read the Docs](#)
 
 ---
 
@@ -333,9 +336,9 @@ Potential future features:
 
 ## 🙋 About the Developer
 
-Built by **Anand Sundar** — a backend engineer specializing in Go, distributed systems, and security tooling.
+Built by **Anand Sundar** — a Software Engineering professional and Agentic AI Security Engineer specializing in cybersecurity analytics, GRC frameworks, threat detection, and vulnerability management, with a strong foundation in secure system design and automation.
 
-Links: [GitHub](https://github.com/AnandSundar) | [LinkedIn](#) | [Live Demo](#)
+Links: [GitHub](https://github.com/AnandSundar) | [LinkedIn](https://www.linkedin.com/in/anandsundar96/)
 
 This project was built to demonstrate real-world bug bounty operations skills, including triage workflows, AI-assisted severity scoring, and program health analytics.
 
