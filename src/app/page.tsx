@@ -547,7 +547,10 @@ export default function Dashboard() {
           timestamp: new Date()
         }))}
         onSendMessage={async (msg: string) => {
+          // Add user message
+          setIntelMessages(prev => [...prev, { id: Date.now().toString(), role: "user", content: msg, timestamp: new Date() }]);
           setIntelLoading(true);
+          
           try {
             const response = await fetch("/api/agents/intel", {
               method: "POST",
@@ -556,30 +559,35 @@ export default function Dashboard() {
                 messages: [...intelMessages.map(m => ({ role: m.role, content: m.content })), { role: "user", content: msg }]
               })
             });
-            const data = await response.json();
-            // Handle streaming response
+            
+            if (!response.ok) {
+              throw new Error(`API error: ${response.status}`);
+            }
+            
             const reader = response.body?.getReader();
             const decoder = new TextDecoder();
             let assistantMessage = "";
+            const assistantId = Date.now().toString();
             
             if (reader) {
               while (true) {
                 const { done, value } = await reader.read();
                 if (done) break;
-                const text = decoder.decode(value);
+                const text = decoder.decode(value, { stream: true });
                 assistantMessage += text;
                 // Update messages in real-time
                 setIntelMessages(prev => {
-                  const existing = prev.find(m => m.role === "assistant" && m.id === "streaming");
+                  const existing = prev.find(m => m.role === "assistant" && m.id === assistantId);
                   if (existing) {
-                    return prev.map(m => m.id === "streaming" ? { ...m, content: assistantMessage } : m);
+                    return prev.map(m => m.id === assistantId ? { ...m, content: assistantMessage } : m);
                   }
-                  return [...prev, { id: "streaming", role: "assistant", content: assistantMessage, timestamp: new Date() }];
+                  return [...prev, { id: assistantId, role: "assistant", content: assistantMessage, timestamp: new Date() }];
                 });
               }
             }
           } catch (error) {
             console.error("Failed to send message:", error);
+            setIntelMessages(prev => [...prev, { id: Date.now().toString(), role: "assistant", content: "Sorry, I encountered an error. Please check that your OPENAI_API_KEY is set in .env.local", timestamp: new Date() }]);
           } finally {
             setIntelLoading(false);
           }
