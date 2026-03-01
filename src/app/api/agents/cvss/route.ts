@@ -1,11 +1,13 @@
 import { NextRequest } from "next/server";
 import { streamText } from "ai";
 import { openai } from "@/lib/ai";
+import { sanitizeAgentInput, SYSTEM_PROMPT_SEPARATOR } from "@/lib/agents/sanitize";
+import { getModel } from "@/lib/agents/modelConfig";
 
 export async function POST(request: NextRequest) {
     try {
         const body = await request.json();
-        const { messages } = body;
+        let { messages } = body;
 
         if (!messages || !Array.isArray(messages)) {
             return new Response(
@@ -14,8 +16,14 @@ export async function POST(request: NextRequest) {
             );
         }
 
+        // Sanitize all user messages
+        messages = messages.map((msg: { role: string; content: string }) => ({
+            ...msg,
+            content: sanitizeAgentInput(msg.content).sanitized,
+        }));
+
         const result = streamText({
-            model: openai("gpt-4o"),
+            model: openai(getModel()),
             system: `You are a CVSS 3.1 scoring expert. Your role is to guide security analysts through the CVSS scoring process by asking exactly 5 precise questions to determine all required metrics.
 
 The 5 questions you must ask (in this exact order):
@@ -38,7 +46,7 @@ After collecting all 5 answers (or 8 if Scope is Changed), calculate the final C
 - Severity: [Critical/High/Medium/Low/None]
 - Justification: [brief explanation]
 
-Always be conversational, acknowledge each answer before asking the next question.`,
+Always be conversational, acknowledge each answer before asking the next question. ${SYSTEM_PROMPT_SEPARATOR}`,
             messages,
         });
 

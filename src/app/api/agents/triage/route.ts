@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from "next/server";
 import { generateObject } from "ai";
 import { openai } from "@/lib/ai";
 import { z } from "zod";
+import { sanitizeAgentInput, SYSTEM_PROMPT_SEPARATOR } from "@/lib/agents/sanitize";
+import { getModel } from "@/lib/agents/modelConfig";
 
 const triageSchema = z.object({
     severity: z.enum(["critical", "high", "medium", "low", "informational"]),
@@ -24,17 +26,24 @@ export async function POST(request: NextRequest) {
             );
         }
 
+        // Sanitize all user inputs
+        const sanitizedTitle = sanitizeAgentInput(title);
+        const sanitizedDesc = sanitizeAgentInput(description);
+        const sanitizedSteps = sanitizeAgentInput(stepsToReproduce || '');
+        const sanitizedUrl = sanitizeAgentInput(affectedUrl || '');
+        const sanitizedReporter = sanitizeAgentInput(reporterHandle || '');
+
         const result = await generateObject({
-            model: openai("gpt-4o"),
+            model: openai(getModel()),
             schema: triageSchema,
-            system: `You are a senior security analyst triaging bug bounty reports for a large e-commerce platform. Be concise, precise, and prioritize merchant data protection and multi-tenant risk. Analyze the vulnerability report and provide a structured assessment.`,
+            system: `You are a senior security analyst triaging bug bounty reports for a large e-commerce platform. Be concise, precise, and prioritize merchant data protection and multi-tenant risk. Analyze the vulnerability report and provide a structured assessment. ${SYSTEM_PROMPT_SEPARATOR}`,
             prompt: `Analyze the following bug bounty report and provide a structured triage assessment:
 
-**Title:** ${title}
-**Description:** ${description}
-**Steps to Reproduce:** ${stepsToReproduce || "Not provided"}
-**Affected URL:** ${affectedUrl || "Not provided"}
-**Reporter:** ${reporterHandle || "Anonymous"}
+**Title:** ${sanitizedTitle.sanitized}
+**Description:** ${sanitizedDesc.sanitized}
+**Steps to Reproduce:** ${sanitizedSteps.sanitized || "Not provided"}
+**Affected URL:** ${sanitizedUrl.sanitized || "Not provided"}
+**Reporter:** ${sanitizedReporter.sanitized || "Anonymous"}
 
 Provide your assessment with:
 - severity level (critical/high/medium/low/informational)
@@ -48,6 +57,7 @@ Provide your assessment with:
         return NextResponse.json({
             success: true,
             data: result.object,
+            sanitizationApplied: sanitizedTitle.wasModified || sanitizedDesc.wasModified,
         });
     } catch (error) {
         console.error("Triage Agent Error:", error);

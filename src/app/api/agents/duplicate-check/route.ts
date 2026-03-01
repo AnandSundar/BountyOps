@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from "next/server";
 import { generateObject } from "ai";
 import { openai } from "@/lib/ai";
 import { z } from "zod";
+import { sanitizeAgentInput, SYSTEM_PROMPT_SEPARATOR } from "@/lib/agents/sanitize";
+import { getModel } from "@/lib/agents/modelConfig";
 
 const matchSchema = z.object({
     reportId: z.string(),
@@ -27,6 +29,13 @@ export async function POST(request: NextRequest) {
             );
         }
 
+        // Sanitize user inputs
+        const sanitizedTitle = sanitizeAgentInput(newReport.title || '');
+        const sanitizedDesc = sanitizeAgentInput(newReport.description || '');
+        const sanitizedType = sanitizeAgentInput(newReport.type || '');
+        const sanitizedEndpoint = sanitizeAgentInput(newReport.affectedEndpoint || '');
+        const sanitizedImpact = sanitizeAgentInput(newReport.impact || '');
+
         const existingReportsText = existingReports
             .map(
                 (report: any, index: number) =>
@@ -39,17 +48,17 @@ export async function POST(request: NextRequest) {
             .join("\n\n");
 
         const result = await generateObject({
-            model: openai("gpt-4o"),
+            model: openai(getModel()),
             schema: duplicateCheckSchema,
-            system: `You are a duplicate detection specialist for a bug bounty program. Analyze incoming reports against the existing report database to identify potential duplicates. Be thorough in comparing vulnerability types, affected endpoints, and attack vectors.`,
+            system: `You are a duplicate detection specialist for a bug bounty program. Analyze incoming reports against the existing report database to identify potential duplicates. Be thorough in comparing vulnerability types, affected endpoints, and attack vectors. ${SYSTEM_PROMPT_SEPARATOR}`,
             prompt: `Analyze the following new report for duplicates against the existing reports database:
 
 **New Report:**
-Title: ${newReport.title}
-Description: ${newReport.description}
-Type: ${newReport.type}
-Affected Endpoint: ${newReport.affectedEndpoint || "Not specified"}
-Impact: ${newReport.impact || "Not specified"}
+Title: ${sanitizedTitle.sanitized}
+Description: ${sanitizedDesc.sanitized}
+Type: ${sanitizedType.sanitized}
+Affected Endpoint: ${sanitizedEndpoint.sanitized || "Not specified"}
+Impact: ${sanitizedImpact.sanitized || "Not specified"}
 
 **Existing Reports Database:**
 ${existingReportsText}
@@ -70,6 +79,7 @@ Finally, determine if this report should be marked as a duplicate based on the c
         return NextResponse.json({
             success: true,
             data: result.object,
+            sanitizationApplied: sanitizedTitle.wasModified || sanitizedDesc.wasModified,
         });
     } catch (error) {
         console.error("Duplicate Check Agent Error:", error);

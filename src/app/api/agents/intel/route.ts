@@ -2,11 +2,13 @@ import { NextRequest } from "next/server";
 import { streamText } from "ai";
 import { openai } from "@/lib/ai";
 import { mockReports } from "@/data/mock-data";
+import { sanitizeAgentInput, SYSTEM_PROMPT_SEPARATOR } from "@/lib/agents/sanitize";
+import { getModel } from "@/lib/agents/modelConfig";
 
 export async function POST(request: NextRequest) {
     try {
         const body = await request.json();
-        const { messages } = body;
+        let { messages } = body;
 
         if (!messages || !Array.isArray(messages)) {
             return new Response(
@@ -14,6 +16,12 @@ export async function POST(request: NextRequest) {
                 { status: 400, headers: { "Content-Type": "application/json" } }
             );
         }
+
+        // Sanitize all user messages
+        messages = messages.map((msg: { role: string; content: string }) => ({
+            ...msg,
+            content: sanitizeAgentInput(msg.content).sanitized,
+        }));
 
         // Get queue stats from mock data
         const getQueueStats = () => {
@@ -84,7 +92,7 @@ export async function POST(request: NextRequest) {
         const leaderboard = getResearcherLeaderboard();
 
         const result = streamText({
-            model: openai("gpt-4o"),
+            model: openai(getModel()),
             system: `You are a bug bounty program intelligence analyst. You have access to the program's statistics:
 
 CURRENT QUEUE STATS:
@@ -103,7 +111,7 @@ ${sloTrend.map(d => `- ${d.date}: ${d.sloPercent.toFixed(1)}%`).join("\n")}
 TOP RESEARCHERS (by bounties):
 ${leaderboard.map(r => `- ${r.handle}: $${r.bounties.toLocaleString()} (${r.reports} reports)`).join("\n")}
 
-Answer questions about the bug bounty program's performance using this data. Be helpful, concise, and provide actionable insights.`,
+Answer questions about the bug bounty program's performance using this data. Be helpful, concise, and provide actionable insights. ${SYSTEM_PROMPT_SEPARATOR}`,
             messages,
         });
 

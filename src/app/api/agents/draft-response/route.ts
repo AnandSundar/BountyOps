@@ -1,6 +1,8 @@
 import { NextRequest } from "next/server";
 import { streamText } from "ai";
 import { openai } from "@/lib/ai";
+import { sanitizeAgentInput, SYSTEM_PROMPT_SEPARATOR } from "@/lib/agents/sanitize";
+import { getModel } from "@/lib/agents/modelConfig";
 
 export async function POST(request: NextRequest) {
     try {
@@ -14,6 +16,12 @@ export async function POST(request: NextRequest) {
             );
         }
 
+        // Sanitize all user inputs
+        const sanitizedTitle = sanitizeAgentInput(reportTitle);
+        const sanitizedVuln = sanitizeAgentInput(vulnClass);
+        const sanitizedResearcher = sanitizeAgentInput(researcherHandle);
+        const sanitizedContext = sanitizeAgentInput(additionalContext || '');
+
         const dispositionMessages: Record<string, string> = {
             valid_bounty: "This is a valid security finding that qualifies for a bounty. We're working on a fix and will award you accordingly.",
             duplicate: "We've determined this report is a duplicate of an existing report we already received.",
@@ -23,7 +31,7 @@ export async function POST(request: NextRequest) {
         };
 
         const result = streamText({
-            model: openai("gpt-4o"),
+            model: openai(getModel()),
             system: `You are a security analyst at Shopify writing responses to external security researchers. Your tone is: warm, specific, professional, and direct.
 
 Always:
@@ -31,15 +39,15 @@ Always:
 - Reference the specific finding
 - Explain the disposition clearly
 - For valid reports, express genuine appreciation
-- Keep it under 150 words`,
-            prompt: `Write a response to security researcher "${researcherHandle}" about their bug report.
+- Keep it under 150 words ${SYSTEM_PROMPT_SEPARATOR}`,
+            prompt: `Write a response to security researcher "${sanitizedResearcher.sanitized}" about their bug report.
 
 **Report Details:**
-- Title: ${reportTitle}
-- Vulnerability Type: ${vulnClass}
+- Title: ${sanitizedTitle.sanitized}
+- Vulnerability Type: ${sanitizedVuln.sanitized}
 - Severity: ${severity}
 - Disposition: ${disposition} - ${dispositionMessages[disposition] || ""}
-${additionalContext ? `- Additional Context: ${additionalContext}` : ""}
+${sanitizedContext.sanitized ? `- Additional Context: ${sanitizedContext.sanitized}` : ""}
 
 Write a professional, warm response that:
 1. Thanks them by name
