@@ -5,6 +5,9 @@ import { motion, AnimatePresence } from "framer-motion";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { AIBadge } from "@/components/ui/ai-badge";
+import { AILoading } from "@/components/ui/ai-loading";
+import { AIChatPanel } from "@/components/ui/ai-chat-panel";
 import { cn, formatCurrency, formatDate } from "@/lib/utils";
 import { 
   X, 
@@ -28,7 +31,9 @@ import {
   Archive,
   XCircle,
   CheckCircle2,
-  AlertCircle
+  AlertCircle,
+  Sparkles,
+  Bot
 } from "lucide-react";
 import { VulnerabilityReport, Severity, Status } from "@/types";
 
@@ -115,6 +120,14 @@ export function ReportDetail({ report, isOpen, onClose }: ReportDetailProps) {
   const [internalNotes, setInternalNotes] = useState("");
   const [showPreview, setShowPreview] = useState(false);
   
+  // AI State
+  const [isAITriageLoading, setIsAITriageLoading] = useState(false);
+  const [aiTriageResult, setAITriageResult] = useState<any>(null);
+  const [isCVSSChatOpen, setIsCVSSChatOpen] = useState(false);
+  const [cvssMessages, setCVSSMessages] = useState<{id: string; role: "user" | "assistant"; content: string; timestamp: Date}[]>([]);
+  const [isCVSSLoading, setIsCVSSLoading] = useState(false);
+  const [cvssResult, setCVSSResult] = useState<{vectorString: string; baseScore: number; severity: string} | null>(null);
+  
   // CVSS Calculator State
   const [attackVector, setAttackVector] = useState<AttackVector>("network");
   const [attackComplexity, setAttackComplexity] = useState<AttackComplexity>("low");
@@ -186,6 +199,87 @@ export function ReportDetail({ report, isOpen, onClose }: ReportDetailProps) {
     return "text-gray-500 bg-gray-500/20";
   };
 
+  // AI Triage Handler
+  const handleAITriage = async () => {
+    if (!report) return;
+    setIsAITriageLoading(true);
+    try {
+      const response = await fetch("/api/agents/triage", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          title: report.title,
+          description: report.description,
+          stepsToReproduce: report.stepsToReproduce.join("\n"),
+          affectedUrl: report.affectedEndpoint,
+          reporterHandle: report.researcher,
+        }),
+      });
+      const data = await response.json();
+      if (data.success) {
+        setAITriageResult(data.data);
+      }
+    } catch (error) {
+      console.error("AI Triage error:", error);
+    } finally {
+      setIsAITriageLoading(false);
+    }
+  };
+
+  // CVSS Chat Handler
+  const handleCVSSMessage = async (message: string) => {
+    const newMessages = [
+      ...cvssMessages,
+      { id: Date.now().toString(), role: "user" as const, content: message, timestamp: new Date() },
+    ];
+    setCVSSMessages(newMessages);
+    setIsCVSSLoading(true);
+
+    try {
+      const response = await fetch("/api/agents/cvss", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ messages: newMessages }),
+      });
+
+      if (!response.ok) throw new Error("Failed to get response");
+
+      const reader = response.body?.getReader();
+      const decoder = new TextDecoder();
+      let assistantMessage = "";
+
+      if (reader) {
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+          const chunk = decoder.decode(value);
+          assistantMessage += chunk;
+          setCVSSMessages([
+            ...newMessages,
+            { id: "assistant", role: "assistant", content: assistantMessage, timestamp: new Date() },
+          ]);
+        }
+      }
+
+      // Check if we got a CVSS score in the response
+      const cvssMatch = assistantMessage.match(/Base Score:\s*(\d+\.?\d*)/i);
+      const severityMatch = assistantMessage.match(/Severity:\s*(Critical|High|Medium|Low|None)/i);
+      const vectorMatch = assistantMessage.match(/Vector:\s*(CVSS:3\.1\/[^\n]+)/i);
+
+      if (cvssMatch && severityMatch) {
+        setCVSSResult({
+          vectorString: vectorMatch ? vectorMatch[1] : "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:H/A:H",
+          baseScore: parseFloat(cvssMatch[1]),
+          severity: severityMatch[1],
+        });
+      }
+    } catch (error) {
+      console.error("CVSS chat error:", error);
+    } finally {
+      setIsCVSSLoading(false);
+    }
+  };
+
   if (!report) return null;
 
   return (
@@ -214,9 +308,27 @@ export function ReportDetail({ report, isOpen, onClose }: ReportDetailProps) {
                 <h2 className="text-xl font-bold">Report Details</h2>
                 <p className="text-sm text-muted-foreground">{report.id}</p>
               </div>
-              <Button variant="ghost" size="icon" onClick={onClose}>
-                <X className="w-5 h-5" />
-              </Button>
+              <div className="flex items-center gap-2">
+                <Button 
+                  variant="outline" 
+                  size="sm" 
+                  onClick={handleAITriage}
+                  disabled={isAITriageLoading}
+                  className="border-teal-500/50 text-teal-400 hover:bg-teal-500/10"
+                >
+                  {isAITriageLoading ? (
+                    <Sparkles className="w-4 h-4 animate-pulse" />
+                  ) : (
+                    <>
+                      <Sparkles className="w-4 h-4 mr-2" />
+                      AI Triage
+                    </>
+                  )}
+                </Button>
+                <Button variant="ghost" size="icon" onClick={onClose}>
+                  <X className="w-5 h-5" />
+                </Button>
+              </div>
             </div>
 
             <div className="p-6 space-y-6">
@@ -266,6 +378,58 @@ export function ReportDetail({ report, isOpen, onClose }: ReportDetailProps) {
                   </div>
                 </CardContent>
               </Card>
+
+              {/* AI Triage Result */}
+              {aiTriageResult && (
+                <motion.div
+                  initial={{ opacity: 0, y: -10 }}
+                  animate={{ opacity: 1, y: 0 }}
+                >
+                  <Card className="border-teal-500/30 bg-teal-500/5">
+                    <CardHeader className="pb-3">
+                      <div className="flex items-center justify-between">
+                        <CardTitle className="text-lg flex items-center gap-2">
+                          <Sparkles className="w-5 h-5 text-teal-400" />
+                          AI Triage Result
+                        </CardTitle>
+                        <AIBadge />
+                      </div>
+                    </CardHeader>
+                    <CardContent className="space-y-4">
+                      <div className="grid grid-cols-2 gap-4">
+                        <div>
+                          <p className="text-sm text-muted-foreground">Severity</p>
+                          <Badge className={`mt-1 border ${getSeverityColor(aiTriageResult.severity as Severity)}`}>
+                            {aiTriageResult.severity}
+                          </Badge>
+                        </div>
+                        <div>
+                          <p className="text-sm text-muted-foreground">Confidence</p>
+                          <p className="text-lg font-semibold mt-1">{aiTriageResult.confidenceScore}%</p>
+                        </div>
+                        <div className="col-span-2">
+                          <p className="text-sm text-muted-foreground">Vulnerability Class</p>
+                          <p className="font-medium">{aiTriageResult.vulnClass}</p>
+                        </div>
+                      </div>
+                      <div>
+                        <p className="text-sm text-muted-foreground mb-1">Summary</p>
+                        <p className="text-sm">{aiTriageResult.summary}</p>
+                      </div>
+                      <div>
+                        <p className="text-sm text-muted-foreground mb-1">Recommended Next Step</p>
+                        <p className="text-sm">{aiTriageResult.recommendedNextStep}</p>
+                      </div>
+                      {aiTriageResult.requiresEscalation && (
+                        <div className="flex items-center gap-2 p-3 bg-red-500/10 border border-red-500/30 rounded-lg">
+                          <AlertTriangle className="w-4 h-4 text-red-400" />
+                          <span className="text-sm text-red-400">Requires immediate escalation</span>
+                        </div>
+                      )}
+                    </CardContent>
+                  </Card>
+                </motion.div>
+              )}
 
               {/* Description */}
               <Card>
@@ -324,9 +488,20 @@ export function ReportDetail({ report, isOpen, onClose }: ReportDetailProps) {
               {/* Impact Scorer - CVSS Calculator */}
               <Card>
                 <CardHeader>
-                  <CardTitle className="text-lg flex items-center gap-2">
-                    <Shield className="w-5 h-5" />
-                    Impact Scorer (CVSS 3.1)
+                  <CardTitle className="text-lg flex items-center justify-between">
+                    <span className="flex items-center gap-2">
+                      <Shield className="w-5 h-5" />
+                      Impact Scorer (CVSS 3.1)
+                    </span>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => setIsCVSSChatOpen(true)}
+                      className="border-teal-500/50 text-teal-400 hover:bg-teal-500/10"
+                    >
+                      <Bot className="w-4 h-4 mr-2" />
+                      Score with AI
+                    </Button>
                   </CardTitle>
                 </CardHeader>
                 <CardContent className="space-y-6">
@@ -491,6 +666,21 @@ export function ReportDetail({ report, isOpen, onClose }: ReportDetailProps) {
               </Card>
             </div>
           </motion.div>
+
+          {/* AI CVSS Chat Panel */}
+          <AIChatPanel
+            isOpen={isCVSSChatOpen}
+            onClose={() => setIsCVSSChatOpen(false)}
+            title="CVSS Scoring Assistant"
+            messages={cvssMessages}
+            onSendMessage={handleCVSSMessage}
+            isLoading={isCVSSLoading}
+            suggestions={[
+              "Start CVSS scoring for this vulnerability",
+              "Help me calculate the score",
+              "What is Attack Vector?"
+            ]}
+          />
         </>
       )}
     </AnimatePresence>

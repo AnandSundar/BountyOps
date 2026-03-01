@@ -1,9 +1,11 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { AIBadge } from "@/components/ui/ai-badge";
+import { AILoading } from "@/components/ui/ai-loading";
 import { cn } from "@/lib/utils";
 import { 
   Send, 
@@ -13,9 +15,12 @@ import {
   CheckCircle,
   Loader2,
   ArrowRight,
-  Shield
+  Shield,
+  AlertTriangle,
+  Search
 } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
+import { mockReports } from "@/data/mock-data";
 
 const vulnerabilityTypes = [
   "SQL Injection",
@@ -37,6 +42,10 @@ const vulnerabilityTypes = [
 export default function SubmitPage() {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isSuccess, setIsSuccess] = useState(false);
+  // Duplicate check state
+  const [isCheckingDuplicates, setIsCheckingDuplicates] = useState(false);
+  const [duplicateWarning, setDuplicateWarning] = useState<{isDuplicate: boolean; matches: any[]} | null>(null);
+  
   const [formData, setFormData] = useState({
     title: "",
     type: "",
@@ -49,6 +58,43 @@ export default function SubmitPage() {
     email: "",
     researcherName: ""
   });
+
+  // Check for duplicates when title or description changes
+  useEffect(() => {
+    const checkDuplicates = async () => {
+      if (!formData.title || formData.title.length < 10) return;
+      
+      setIsCheckingDuplicates(true);
+      try {
+        const response = await fetch("/api/agents/duplicate-check", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            newReport: {
+              title: formData.title,
+              description: formData.description,
+              type: formData.type,
+              affectedEndpoint: formData.target,
+            },
+            existingReports: mockReports.slice(0, 10),
+          }),
+        });
+        const data = await response.json();
+        if (data.success && data.data.isDuplicate) {
+          setDuplicateWarning(data.data);
+        } else {
+          setDuplicateWarning(null);
+        }
+      } catch (error) {
+        console.error("Duplicate check error:", error);
+      } finally {
+        setIsCheckingDuplicates(false);
+      }
+    };
+
+    const debounce = setTimeout(checkDuplicates, 1000);
+    return () => clearTimeout(debounce);
+  }, [formData.title, formData.description, formData.type]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -118,6 +164,46 @@ export default function SubmitPage() {
           Help us improve our security by reporting vulnerabilities responsibly
         </p>
       </div>
+
+      {/* AI Duplicate Check Warning */}
+      <AnimatePresence>
+        {isCheckingDuplicates && (
+          <motion.div
+            initial={{ opacity: 0, y: -10 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -10 }}
+          >
+            <AILoading message="Checking for duplicates..." />
+          </motion.div>
+        )}
+        {duplicateWarning && duplicateWarning.isDuplicate && (
+          <motion.div
+            initial={{ opacity: 0, y: -10 }}
+            animate={{ opacity: 1, y: 0 }}
+            className="p-4 bg-yellow-500/10 border border-yellow-500/30 rounded-lg flex items-start gap-3"
+          >
+            <AlertTriangle className="w-5 h-5 text-yellow-400 mt-0.5" />
+            <div className="flex-1">
+              <div className="flex items-center gap-2 mb-1">
+                <span className="font-medium text-yellow-400">Potential Duplicate Found</span>
+                <AIBadge />
+              </div>
+              <p className="text-sm text-yellow-200/80">
+                This report may be a duplicate of existing reports. Please review before submitting.
+              </p>
+              {duplicateWarning.matches && duplicateWarning.matches.length > 0 && (
+                <div className="mt-2 text-sm">
+                  {duplicateWarning.matches.slice(0, 2).map((match: any, i: number) => (
+                    <p key={i} className="text-yellow-200/70">
+                      • Similar to report {match.reportId}: {match.similarityReason}
+                    </p>
+                  ))}
+                </div>
+              )}
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
 
       <form onSubmit={handleSubmit}>
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">

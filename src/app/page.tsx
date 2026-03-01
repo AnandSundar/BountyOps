@@ -1,8 +1,10 @@
 "use client";
 
+import { useState, useMemo } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { AIChatPanel } from "@/components/ui/ai-chat-panel";
 import { cn, formatCurrency, formatNumber, formatDate } from "@/lib/utils";
 import { 
   Shield, 
@@ -22,9 +24,13 @@ import {
   Clock3,
   MessageSquare,
   Upload,
-  Award
+  Award,
+  MessageCircle,
+  Bot,
+  Sparkles
 } from "lucide-react";
 import Link from "next/link";
+import { motion, AnimatePresence } from "framer-motion";
 import { 
   mockDashboardStats, 
   mockSeverityDistribution, 
@@ -47,8 +53,6 @@ import {
   Bar,
   Legend
 } from "recharts";
-import { useState, useMemo } from "react";
-import { motion, AnimatePresence } from "framer-motion";
 
 // Calculate SLO Compliance and Reports Closed This Week
 const calculateSLOCompliance = () => {
@@ -169,6 +173,10 @@ const recentReports = mockReports.slice(0, 5);
 
 export default function Dashboard() {
   const [activityFilter, setActivityFilter] = useState("all");
+  const [isIntelOpen, setIsIntelOpen] = useState(false);
+  const [intelMessages, setIntelMessages] = useState<Array<{id: string, role: "user" | "assistant", content: string, timestamp: Date}>>([]);
+  const [intelInput, setIntelInput] = useState("");
+  const [intelLoading, setIntelLoading] = useState(false);
 
   const filteredActivity = useMemo(() => {
     if (activityFilter === "all") return recentActivity;
@@ -511,6 +519,79 @@ export default function Dashboard() {
           </CardContent>
         </Card>
       </div>
+
+      {/* Floating Ask Intel Button */}
+      <motion.button
+        onClick={() => setIsIntelOpen(true)}
+        className="fixed bottom-6 right-6 z-40 flex items-center gap-2 px-4 py-3 bg-gradient-to-r from-teal-600 to-cyan-600 hover:from-teal-500 hover:to-cyan-500 text-white rounded-full shadow-lg shadow-teal-500/25 hover:shadow-teal-500/40 transition-all"
+        whileHover={{ scale: 1.05 }}
+        whileTap={{ scale: 0.95 }}
+      >
+        <span className="relative flex h-3 w-3">
+          <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-teal-400 opacity-75"></span>
+          <span className="relative inline-flex rounded-full h-3 w-3 bg-teal-200"></span>
+        </span>
+        <Bot className="w-5 h-5" />
+        <span className="font-medium">Ask Intel</span>
+      </motion.button>
+
+      {/* Intel Chat Panel */}
+      <AIChatPanel
+        isOpen={isIntelOpen}
+        onClose={() => setIsIntelOpen(false)}
+        title="Program Intelligence"
+        messages={intelMessages.map((m: any) => ({
+          id: m.id,
+          role: m.role as "user" | "assistant",
+          content: m.content,
+          timestamp: new Date()
+        }))}
+        onSendMessage={async (msg: string) => {
+          setIntelLoading(true);
+          try {
+            const response = await fetch("/api/agents/intel", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                messages: [...intelMessages.map(m => ({ role: m.role, content: m.content })), { role: "user", content: msg }]
+              })
+            });
+            const data = await response.json();
+            // Handle streaming response
+            const reader = response.body?.getReader();
+            const decoder = new TextDecoder();
+            let assistantMessage = "";
+            
+            if (reader) {
+              while (true) {
+                const { done, value } = await reader.read();
+                if (done) break;
+                const text = decoder.decode(value);
+                assistantMessage += text;
+                // Update messages in real-time
+                setIntelMessages(prev => {
+                  const existing = prev.find(m => m.role === "assistant" && m.id === "streaming");
+                  if (existing) {
+                    return prev.map(m => m.id === "streaming" ? { ...m, content: assistantMessage } : m);
+                  }
+                  return [...prev, { id: "streaming", role: "assistant", content: assistantMessage, timestamp: new Date() }];
+                });
+              }
+            }
+          } catch (error) {
+            console.error("Failed to send message:", error);
+          } finally {
+            setIntelLoading(false);
+          }
+        }}
+        isLoading={intelLoading}
+        suggestions={[
+          "What's our SLO trend?",
+          "Which vuln class has most backlog?",
+          "Who are our top researchers?",
+          "Where should I focus triage today?"
+        ]}
+      />
     </div>
   );
 }

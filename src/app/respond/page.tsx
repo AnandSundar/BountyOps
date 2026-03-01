@@ -1,9 +1,11 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect, useRef } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { AIBadge } from "@/components/ui/ai-badge";
+import { AILoading } from "@/components/ui/ai-loading";
 import { cn } from "@/lib/utils";
 import { 
   Copy, 
@@ -20,7 +22,9 @@ import {
   XCircle,
   Award,
   FileText,
-  RefreshCw
+  RefreshCw,
+  Sparkles,
+  Bot
 } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 
@@ -175,6 +179,59 @@ export default function RespondPage() {
   const [copied, setCopied] = useState(false);
   const [showPreview, setShowPreview] = useState(false);
   const [activeTip, setActiveTip] = useState<keyof typeof toneGuide>("professional");
+  
+  // AI Response Generation State
+  const [isGeneratingAI, setIsGeneratingAI] = useState(false);
+  const [aiGenerated, setAIGenerated] = useState(false);
+  
+  // Mock selected report
+  const selectedReport = {
+    title: "SQL Injection in User Search Endpoint",
+    type: "SQL Injection",
+    severity: "critical",
+    researcher: "security_hunter_42",
+    bounty: 5000
+  };
+
+  // AI Generate Response Handler
+  const handleGenerateAI = async () => {
+    setIsGeneratingAI(true);
+    setAIGenerated(false);
+    
+    try {
+      const response = await fetch("/api/agents/draft-response", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          reportTitle: selectedReport.title,
+          vulnClass: selectedReport.type,
+          severity: selectedReport.severity,
+          disposition: templateType === "needs_info" ? "needs_more_info" : templateType === "out_of_scope" ? "out_of_scope" : templateType === "fixed" ? "fixed" : templateType === "duplicate" ? "duplicate" : "valid_bounty",
+          researcherHandle: selectedReport.researcher,
+        }),
+      });
+
+      const reader = response.body?.getReader();
+      const decoder = new TextDecoder();
+      let generatedText = "";
+
+      if (reader) {
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+          const chunk = decoder.decode(value);
+          generatedText += chunk;
+          setBody(generatedText);
+        }
+      }
+      
+      setAIGenerated(true);
+    } catch (error) {
+      console.error("AI generation error:", error);
+    } finally {
+      setIsGeneratingAI(false);
+    }
+  };
 
   const handleTemplateChange = (type: TemplateType) => {
     setTemplateType(type);
@@ -228,9 +285,25 @@ export default function RespondPage() {
           {/* Template Selection */}
           <Card>
             <CardHeader>
-              <CardTitle className="text-lg flex items-center gap-2">
-                <MessageSquare className="w-5 h-5" />
-                Select Response Template
+              <CardTitle className="text-lg flex items-center justify-between">
+                <span className="flex items-center gap-2">
+                  <MessageSquare className="w-5 h-5" />
+                  Select Response Template
+                </span>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={handleGenerateAI}
+                  disabled={isGeneratingAI}
+                  className="border-teal-500/50 text-teal-400 hover:bg-teal-500/10"
+                >
+                  {isGeneratingAI ? (
+                    <Sparkles className="w-4 h-4 animate-pulse mr-2" />
+                  ) : (
+                    <Sparkles className="w-4 h-4 mr-2" />
+                  )}
+                  Generate with AI
+                </Button>
               </CardTitle>
             </CardHeader>
             <CardContent>
