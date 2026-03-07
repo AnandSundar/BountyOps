@@ -8,7 +8,13 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](https://opensource.org/licenses/MIT)
 [![Status: Live Demo](https://img.shields.io/badge/Status-Live_Demo-brightgreen)](https://github.com/AnandSundar/BountyOps)
 
-BountyOps Dashboard
+
+<img width="1536" height="1024" alt="image" src="https://github.com/user-attachments/assets/5d7dd824-feab-4794-8085-c5630bfafdef" />
+
+
+
+
+## BountyOps Dashboard
 
 <img width="1615" height="917" alt="image" src="https://github.com/user-attachments/assets/50939e7b-6e09-4977-a349-2f51b73a39eb" />
 
