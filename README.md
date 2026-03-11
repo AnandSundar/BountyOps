@@ -315,17 +315,6 @@ bountyops/
 
 ---
 
-## 🔐 Security & Privacy Note
-
-**Important for anyone evaluating this project.**
-
-All report data in BountyOps is **fictional and generated for demo purposes**. No real vulnerability data is stored or transmitted.
-
-API keys are stored server-side in `.env.local` and are **never exposed to the browser**. All AI requests go through your own API key.
-
-> ⚠️ **This project is built as a portfolio demonstration.** It is not a production security tool. Do not use it to handle real vulnerability reports without adding proper authentication, database, and security measures.
-
----
 
 ## 🛣️ Roadmap
 
